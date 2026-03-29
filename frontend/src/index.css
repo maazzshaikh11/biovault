@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#050a0f] text-white font-syne min-h-screen overflow-x-hidden;
+  }
+}
+
+/* Animated grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border-none cursor-pointer font-syne font-bold uppercase tracking-wider transition-all w-full;
+  }
+  .btn-primary {
+    @apply text-black bg-gradient-to-br from-accent to-[#0099cc] shadow-[0_4px_20px_rgba(0,229,255,0.3)];
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply -translate-y-[2px] shadow-[0_8px_28px_rgba(0,229,255,0.45)];
+  }
+  .btn-primary:disabled {
+    @apply opacity-40 cursor-not-allowed transform-none shadow-none;
+  }
+  .btn-secondary {
+    @apply bg-transparent text-muted border border-border;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    @apply border-accent text-accent;
+  }
+  .btn-danger {
+    @apply bg-[rgba(255,56,96,0.1)] text-danger border border-[rgba(255,56,96,0.3)];
+  }
+  .btn-danger:hover:not(:disabled) {
+    @apply bg-[rgba(255,56,96,0.2)];
+  }
+
+  .panel {
+    @apply bg-surface border border-border rounded-[20px] p-9 w-full max-w-[520px] shadow-[0_8px_48px_rgba(0,0,0,0.6),var(--tw-shadow-glow)] animate-[fadeIn_0.5s_ease];
+  }
+  
+  .section-tag {
+    @apply font-mono text-[0.65rem] tracking-[3px] uppercase text-accent mb-1.5;
+  }
+  
+  .subtitle {
+    @apply text-[0.85rem] text-muted mb-6 leading-relaxed;
+  }
+  
+  .input-group label {
+    @apply font-mono text-[0.72rem] text-muted uppercase tracking-[1.5px] block mb-1.5;
+  }
+  
+  .input-group input {
+    @apply w-full p-2.5 px-3.5 bg-surface2 border border-border rounded-lg text-white font-mono text-[0.85rem] outline-none transition-colors focus:border-accent;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-custom {
+  from { opacity: 1; }
+  to { opacity: 0.5; }
+}

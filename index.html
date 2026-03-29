@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BioVault — Biometric Wallet</title>
+
+<!-- face-api.js for real facial recognition -->
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #050a0f;
+    --surface: #0b1420;
+    --surface2: #0f1e30;
+    --border: #1a3a5c;
+    --accent: #00e5ff;
+    --accent2: #00ff9d;
+    --danger: #ff3860;
+    --warn: #ffb300;
+    --text: #c8e6f7;
+    --muted: #4a7a9b;
+    --glow: 0 0 24px rgba(0,229,255,0.25);
+    --glow2: 0 0 16px rgba(0,255,157,0.2);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    background: rgba(5,10,15,0.7);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 1.4rem; font-weight: 800; letter-spacing: -0.5px;
+  }
+  .logo-icon {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo span { color: var(--accent); }
+
+  .status-bar {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem; color: var(--muted);
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s, box-shadow 0.4s;
+  }
+  .dot.online { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+  .dot.auth { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  /* ── MAIN LAYOUT ── */
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 36px;
+    width: 100%; max-width: 520px;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.6), var(--glow);
+    display: none; animation: fadeIn 0.5s ease;
+  }
+  .panel.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+  /* ── LOADING PANEL ── */
+  #panel-loading { text-align: center; }
+  .spinner-ring {
+    width: 64px; height: 64px; margin: 0 auto 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CAMERA AREA ── */
+  .cam-wrapper {
+    position: relative;
+    background: #000;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    aspect-ratio: 4/3;
+    margin-bottom: 20px;
+  }
+  .cam-wrapper video, .cam-wrapper canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .cam-wrapper canvas { pointer-events: none; }
+
+  /* Scanning overlay */
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanMove 2s linear infinite;
+    opacity: 0;
+    z-index: 10;
+  }
+  .cam-wrapper.scanning .scan-line { opacity: 1; }
+  @keyframes scanMove { 0% { top: 0; } 100% { top: 100%; } }
+
+  /* Corner brackets */
+  .corner { position: absolute; width: 20px; height: 20px; z-index: 11; }
+  .corner.tl { top: 12px; left: 12px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+  .corner.tr { top: 12px; right: 12px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+  .corner.bl { bottom: 12px; left: 12px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+  .corner.br { bottom: 12px; right: 12px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+
+  /* Face box overlay */
+  .face-box {
+    position: absolute; border: 2px solid var(--accent2);
+    border-radius: 4px; z-index: 12;
+    box-shadow: 0 0 12px rgba(0,255,157,0.4);
+    display: none;
+    transition: all 0.1s;
+  }
+
+  /* ── SECTION TITLES ── */
+  .section-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 6px;
+  }
+  h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: 4px; }
+  .subtitle { font-size: 0.85rem; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
+
+  /* ── STEPS ── */
+  .steps {
+    display: flex; gap: 8px; margin-bottom: 24px;
+  }
+  .step {
+    flex: 1; height: 4px; border-radius: 2px;
+    background: var(--border); transition: background 0.4s;
+  }
+  .step.done { background: var(--accent2); }
+  .step.active { background: var(--accent); animation: pulse 1s ease infinite alternate; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 24px; border-radius: 10px; border: none; cursor: pointer;
+    font-family: 'Syne', sans-serif; font-size: 0.9rem; font-weight: 700;
+    transition: all 0.2s; width: 100%; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0099cc);
+    color: #000;
+    box-shadow: 0 4px 20px rgba(0,229,255,0.3);
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,229,255,0.45); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-secondary {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger {
+    background: rgba(255,56,96,0.1); color: var(--danger);
+    border: 1px solid rgba(255,56,96,0.3);
+  }
+  .btn-danger:hover { background: rgba(255,56,96,0.2); }
+  .btn + .btn { margin-top: 10px; }
+
+  /* ── TOAST ── */
+  .toast {
+    padding: 10px 16px; border-radius: 10px; margin-bottom: 16px;
+    font-size: 0.82rem; font-family: 'Share Tech Mono', monospace;
+    display: none; animation: fadeIn 0.3s ease;
+  }
+  .toast.info { background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.25); color: var(--accent); display: block; }
+  .toast.success { background: rgba(0,255,157,0.1); border: 1px solid rgba(0,255,157,0.25); color: var(--accent2); display: block; }
+  .toast.error { background: rgba(255,56,96,0.1); border: 1px solid rgba(255,56,96,0.3); color: var(--danger); display: block; }
+  .toast.warn { background: rgba(255,179,0,0.1); border: 1px solid rgba(255,179,0,0.3); color: var(--warn); display: block; }
+
+  /* ── WALLET PANEL ── */
+  #panel-wallet { max-width: 560px; }
+
+  .wallet-header {
+    display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px;
+  }
+  .wallet-addr {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem; color: var(--muted); margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  .balance-card {
+    background: linear-gradient(135deg, #0a1f35, #0d2a45);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px;
+    margin-bottom: 20px;
+    position: relative; overflow: hidden;
+  }
+  .balance-card::after {
+    content: '';
+    position: absolute; top: -40px; right: -40px;
+    width: 140px; height: 140px;
+    background: radial-gradient(circle, rgba(0,229,255,0.08), transparent 70%);
+    border-radius: 50%;
+  }
+  .balance-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+  .balance-amount {
+    font-size: 2.6rem; font-weight: 800;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .balance-sub { font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+
+  .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .action-btn {
+    padding: 16px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface2); cursor: pointer; text-align: center;
+    transition: all 0.2s; color: var(--text); font-family: 'Syne', sans-serif;
+  }
+  .action-btn:hover { border-color: var(--accent); background: rgba(0,229,255,0.05); }
+  .action-btn .aicon { font-size: 1.4rem; margin-bottom: 6px; }
+  .action-btn .alabel { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* TX LIST */
+  .tx-list { margin-top: 4px; }
+  .tx-title { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px; }
+  .tx-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    margin-bottom: 8px; font-size: 0.82rem;
+  }
+  .tx-left { display: flex; align-items: center; gap: 10px; }
+  .tx-icon { font-size: 1rem; }
+  .tx-desc { font-weight: 600; }
+  .tx-time { font-size: 0.68rem; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
+  .tx-amt { font-weight: 700; font-family: 'Share Tech Mono', monospace; }
+  .tx-amt.in { color: var(--accent2); }
+  .tx-amt.out { color: var(--danger); }
+
+  /* MODAL */
+  .modal-bg {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 32px; width: 100%; max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), var(--glow);
+    animation: fadeIn 0.3s ease;
+  }
+  .modal h3 { font-size: 1.2rem; font-weight: 800; margin-bottom: 6px; }
+  .modal .subtitle { margin-bottom: 20px; }
+  .input-group { margin-bottom: 14px; }
+  .input-group label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-bottom: 6px; }
+  .input-group input {
+    width: 100%; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: 'Share Tech Mono', monospace; font-size: 0.85rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .input-group input:focus { border-color: var(--accent); }
+
+  /* FACE MATCH INDICATOR */
+  .match-bar-wrap { margin-bottom: 14px; }
+  .match-bar-label { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-bottom: 6px; }
+  .match-bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .match-bar-fill { height: 100%; width: 0; border-radius: 3px; transition: width 0.4s, background 0.4s; background: var(--accent); }
+
+  .security-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: rgba(0,255,157,0.08); border: 1px solid rgba(0,255,157,0.2);
+    font-size: 0.7rem; color: var(--accent2); font-family: 'Share Tech Mono', monospace;
+    margin-top: 12px;
+  }
+
+  /* Auth re-verify badge in wallet */
+  .auth-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem; color: var(--accent2);
+  }
+  .auth-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); box-shadow: 0 0 6px var(--accent2); animation: authPulse 2s ease infinite; }
+  @keyframes authPulse { 0%,100% { opacity:1; } 50% { opacity: 0.3; } }
+
+  /* ── ENROLL PROGRESS ── */
+  .capture-progress {
+    display: flex; gap: 6px; margin-bottom: 16px;
+  }
+  .cap-dot {
+    flex: 1; height: 8px; border-radius: 4px;
+    background: var(--border); transition: background 0.3s;
+  }
+  .cap-dot.done { background: var(--accent2); }
+  .cap-dot.active { background: var(--accent); animation: pulse 0.8s ease infinite alternate; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔐</div>
+      Bio<span>Vault</span>
+    </div>
+    <div class="status-bar">
+      <div class="dot" id="net-dot"></div>
+      <span id="net-label">LOADING MODELS</span>
+      &nbsp;|&nbsp;
+      <div class="dot" id="auth-dot"></div>
+      <span id="auth-label">UNAUTHENTICATED</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- PANEL: Loading -->
+    <div class="panel active" id="panel-loading">
+      <div style="text-align:center">
+        <div class="spinner-ring"></div>
+        <div class="section-tag">System Initializing</div>
+        <h2>Loading Biometric Engine</h2>
+        <p class="subtitle" id="load-msg">Downloading face recognition models…<br>This may take a moment on first load.</p>
+      </div>
+    </div>
+
+    <!-- PANEL: Onboarding Choice -->
+    <div class="panel" id="panel-choice">
+      <div class="section-tag">BioVault v1.0</div>
+      <h2>Biometric Wallet</h2>
+      <p class="subtitle">No private keys. No passwords.<br>Your face <em>is</em> your key — secured locally, never uploaded.</p>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:24px;">
+        <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">How it works</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:0.82rem;">
+          <div>🧬 &nbsp;Facial embeddings extracted locally in-browser</div>
+          <div>🔑 &nbsp;Embeddings generate your wallet's cryptographic seed</div>
+          <div>🔒 &nbsp;No biometric data ever leaves your device</div>
+          <div>⛓️ &nbsp;Transactions signed only after live face match</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="startEnroll()">🆕 &nbsp;Create New Wallet</button>
+      <button class="btn btn-secondary" onclick="startAuth()">🔓 &nbsp;Access Existing Wallet</button>
+    </div>
+
+    <!-- PANEL: Enroll -->
+    <div class="panel" id="panel-enroll">
+      <div class="section-tag">Step 1 of 2 — Face Enrollment</div>
+      <h2>Register Your Face</h2>
+      <p class="subtitle">We'll capture 5 samples to build your biometric profile. Stay still and look at the camera.</p>
+
+      <div class="steps">
+        <div class="step active" id="estep-1"></div>
+        <div class="step" id="estep-2"></div>
+        <div class="step" id="estep-3"></div>
+        <div class="step" id="estep-4"></div>
+        <div class="step" id="estep-5"></div>
+      </div>
+
+      <div class="cam-wrapper" id="enroll-cam-wrap">
+        <video id="enroll-video" autoplay muted playsinline></video>
+        <canvas id="enroll-canvas"></canvas>
+        <div class="scan-line"></div>
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div class="face-box" id="enroll-facebox"></div>
+      </div>
+
+      <div class="capture-progress" id="cap-progress">
+        <div class="cap-dot active" id="cdot-0"></div>
+        <div class="cap-dot" id="cdot-1"></div>
+        <div class="cap-dot" id="cdot-2"></div>
+        <div class="cap-dot" id="cdot-3"></div>
+        <div class="cap-dot" id="cdot-4"></div>
+      </div>
+
+      <div class="toast" id="enroll-toast"></div>
+      <button class="btn btn-primary" id="btn-capture" onclick="captureEnroll()" disabled>⬤ &nbsp;Capture Sample</button>
+      <button class="btn btn-secondary" onclick="goChoice()" style="margin-top:10px">← Back</button>
+    </div>
+
+    <!-- PANEL: Auth -->
+    <div class="panel" id="panel-auth">
+      <div class="section-tag">Face Authentication</div>
+      <h2>Verify Identity</h2>
+      <p class="subtitle">Look directly at the camera. Your face will be matched against your stored biometric profile.</p>
+
+      <div class="cam-wrapper scanning" id="auth-cam-wrap">
+        <video id="auth-video" autoplay muted playsinline></video>
+        <canvas id="auth-canvas"></canvas>
+        <div class="scan-line"></div>
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div class="face-box" id="auth-facebox"></div>
+      </div>
+
+      <div class="match-bar-wrap">
+        <div class="match-bar-label">
+          <span>Match Confidence</span>
+          <span id="match-pct">—</span>
+        </div>
+        <div class="match-bar-track">
+          <div class="match-bar-fill" id="match-bar"></div>
+        </div>
+      </div>
+
+      <div class="toast" id="auth-toast"></div>
+      <button class="btn btn-primary" id="btn-verify" onclick="verifyFace()" disabled>🔍 &nbsp;Scan &amp; Verify</button>
+      <button class="btn btn-secondary" onclick="goChoice()" style="margin-top:10px">← Back</button>
+    </div>
+
+    <!-- PANEL: Wallet -->
+    <div class="panel" id="panel-wallet">
+      <div class="wallet-header">
+        <div>
+          <div class="section-tag">Decentralized Wallet</div>
+          <h2>Your Vault</h2>
+          <div class="wallet-addr" id="wallet-addr">0x — — — — — —</div>
+        </div>
+        <div class="auth-badge">
+          <div class="auth-dot"></div> Face Verified
+        </div>
+      </div>
+
+      <div class="balance-card">
+        <div class="balance-label">Total Balance</div>
+        <div class="balance-amount">2.4718 <span style="font-size:1.2rem;font-weight:400">ETH</span></div>
+        <div class="balance-sub">≈ ₹5,34,291 &nbsp;|&nbsp; ↑ 2.4% today</div>
+      </div>
+
+      <div class="action-grid">
+        <div class="action-btn" onclick="openSendModal()">
+          <div class="aicon">↗️</div>
+          <div class="alabel">Send</div>
+        </div>
+        <div class="action-btn" onclick="showReceive()">
+          <div class="aicon">↙️</div>
+          <div class="alabel">Receive</div>
+        </div>
+        <div class="action-btn" onclick="alert('Swap coming soon!')">
+          <div class="aicon">⇄</div>
+          <div class="alabel">Swap</div>
+        </div>
+        <div class="action-btn" onclick="lockWallet()">
+          <div class="aicon">🔒</div>
+          <div class="alabel">Lock</div>
+        </div>
+      </div>
+
+      <div class="tx-list">
+        <div class="tx-title">Recent Transactions</div>
+        <div class="tx-item">
+          <div class="tx-left">
+            <div class="tx-icon">↙️</div>
+            <div>
+              <div class="tx-desc">Received from 0x7a3b…</div>
+              <div class="tx-time">2025-03-28 · 11:42 UTC</div>
+            </div>
+          </div>
+          <div class="tx-amt in">+0.42 ETH</div>
+        </div>
+        <div class="tx-item">
+          <div class="tx-left">
+            <div class="tx-icon">↗️</div>
+            <div>
+              <div class="tx-desc">Sent to 0xf91c…</div>
+              <div class="tx-time">2025-03-26 · 09:15 UTC</div>
+            </div>
+          </div>
+          <div class="tx-amt out">−0.10 ETH</div>
+        </div>
+        <div class="tx-item">
+          <div class="tx-left">
+            <div class="tx-icon">↙️</div>
+            <div>
+              <div class="tx-desc">Contract reward</div>
+              <div class="tx-time">2025-03-22 · 17:03 UTC</div>
+            </div>
+          </div>
+          <div class="tx-amt in">+1.80 ETH</div>
+        </div>
+      </div>
+
+      <div class="security-badge">🔐 Biometric session active — all transactions require face re-auth</div>
+
+      <button class="btn btn-danger" style="margin-top:16px" onclick="resetAll()">⚠ Reset Wallet (Delete Biometric Data)</button>
+    </div>
+
+  </main>
+</div>
+
+<!-- SEND MODAL -->
+<div class="modal-bg" id="send-modal">
+  <div class="modal">
+    <div class="section-tag">Biometric-Authorized Transfer</div>
+    <h3>Send ETH</h3>
+    <p class="subtitle">A face verification will be required to sign this transaction.</p>
+
+    <div class="input-group">
+      <label>Recipient Address</label>
+      <input type="text" id="send-addr" placeholder="0x..." />
+    </div>
+    <div class="input-group">
+      <label>Amount (ETH)</label>
+      <input type="number" id="send-amt" placeholder="0.00" step="0.001" />
+    </div>
+
+    <div class="toast" id="send-toast"></div>
+    <button class="btn btn-primary" onclick="initiateSend()">🔍 Verify Face &amp; Send</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="closeSendModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- SEND AUTH MODAL (face re-verify for send) -->
+<div class="modal-bg" id="send-auth-modal">
+  <div class="modal">
+    <div class="section-tag">Transaction Authorization</div>
+    <h3>Face Re-Verification</h3>
+    <p class="subtitle">Confirm your identity to authorize this transaction.</p>
+
+    <div class="cam-wrapper scanning" id="txauth-cam-wrap" style="height:200px;margin-bottom:14px;">
+      <video id="txauth-video" autoplay muted playsinline></video>
+      <canvas id="txauth-canvas"></canvas>
+      <div class="scan-line"></div>
+      <div class="corner tl"></div><div class="corner tr"></div>
+      <div class="corner bl"></div><div class="corner br"></div>
+      <div class="face-box" id="txauth-facebox"></div>
+    </div>
+
+    <div class="match-bar-wrap">
+      <div class="match-bar-label">
+        <span>Match</span><span id="txmatch-pct">—</span>
+      </div>
+      <div class="match-bar-track">
+        <div class="match-bar-fill" id="txmatch-bar"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="txauth-toast"></div>
+    <button class="btn btn-primary" id="btn-txverify" onclick="verifyAndSend()" disabled>⚡ Authorize &amp; Broadcast</button>
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="cancelTxAuth()">Cancel</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// BioVault — Core Logic
+// ════════════════════════════════════════════════════════════
+
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model';
+
+let enrolledDescriptors = [];   // Array of Float32Array
+let walletAddress = null;
+let pendingSendData = null;
+let enrollStream = null, authStream = null, txStream = null;
+let enrollDetectionLoop = null, authDetectionLoop = null, txDetectionLoop = null;
+let enrollCount = 0;
+let modelsLoaded = false;
+
+// ── Helpers ──────────────────────────────────────────────
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function toast(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'toast ' + type;
+}
+function clearToast(id) {
+  const el = document.getElementById(id);
+  el.className = 'toast';
+}
+function setNetStatus(online) {
+  const dot = document.getElementById('net-dot');
+  const lbl = document.getElementById('net-label');
+  dot.className = 'dot' + (online ? ' online' : '');
+  lbl.textContent = online ? 'MODELS READY' : 'LOADING MODELS';
+}
+function setAuthStatus(authed) {
+  const dot = document.getElementById('auth-dot');
+  const lbl = document.getElementById('auth-label');
+  dot.className = 'dot' + (authed ? ' auth' : '');
+  lbl.textContent = authed ? 'AUTHENTICATED' : 'UNAUTHENTICATED';
+}
+function descriptorAvg(descs) {
+  const avg = new Float32Array(descs[0].length);
+  descs.forEach(d => d.forEach((v,i) => avg[i] += v));
+  avg.forEach((_,i) => avg[i] /= descs.length);
+  return avg;
+}
+function euclidean(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += (a[i]-b[i])**2;
+  return Math.sqrt(sum);
+}
+function addressFromDescriptor(desc) {
+  // Deterministic pseudo-address from descriptor bytes
+  let hash = 0;
+  desc.forEach(v => { hash = ((hash << 5) - hash + Math.round(v*1000)) | 0; });
+  return '0x' + Math.abs(hash).toString(16).padStart(8,'0').toUpperCase()
+       + (Math.abs(hash * 31 + 7).toString(16).padStart(8,'0').toUpperCase())
+       + '…';
+}
+
+// ── Model Loading ─────────────────────────────────────────
+async function loadModels() {
+  try {
+    document.getElementById('load-msg').textContent = 'Downloading face detection model…';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    document.getElementById('load-msg').textContent = 'Downloading landmark model…';
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    document.getElementById('load-msg').textContent = 'Downloading recognition model…';
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    modelsLoaded = true;
+    setNetStatus(true);
+
+    // Check if existing enrollment in sessionStorage
+    const saved = sessionStorage.getItem('biovault_descriptors');
+    if (saved) {
+      const raw = JSON.parse(saved);
+      enrolledDescriptors = raw.map(a => new Float32Array(a));
+      walletAddress = sessionStorage.getItem('biovault_addr');
+    }
+    showPanel('panel-choice');
+  } catch(e) {
+    document.getElementById('load-msg').textContent = 'Error loading models: ' + e.message;
+    console.error(e);
+  }
+}
+
+// ── Camera ───────────────────────────────────────────────
+async function startCamera(videoId) {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width:480, height:360, facingMode:'user' } });
+  const video = document.getElementById(videoId);
+  video.srcObject = stream;
+  await new Promise(r => video.onloadedmetadata = r);
+  return stream;
+}
+function stopStream(stream) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+}
+function clearLoop(id) { if (id) clearInterval(id); return null; }
+
+// ── Enrollment ───────────────────────────────────────────
+async function startEnroll() {
+  showPanel('panel-enroll');
+  enrollCount = 0;
+  enrolledDescriptors = [];
+  updateEnrollUI();
+  clearToast('enroll-toast');
+
+  try {
+    enrollStream = await startCamera('enroll-video');
+    startEnrollDetection();
+  } catch(e) {
+    toast('enroll-toast', '🚫 Camera access denied: ' + e.message, 'error');
+  }
+}
+
+function startEnrollDetection() {
+  const video = document.getElementById('enroll-video');
+  const canvas = document.getElementById('enroll-canvas');
+  const faceBox = document.getElementById('enroll-facebox');
+  const btn = document.getElementById('btn-capture');
+  const wrap = document.getElementById('enroll-cam-wrap');
+
+  enrollDetectionLoop = setInterval(async () => {
+    if (!video.videoWidth) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor().catch(()=>null);
+
+    if (result) {
+      const { box } = result.detection;
+      const scaleX = wrap.clientWidth / video.videoWidth;
+      const scaleY = wrap.clientHeight / video.videoHeight;
+      faceBox.style.display = 'block';
+      faceBox.style.left = (box.x * scaleX) + 'px';
+      faceBox.style.top = (box.y * scaleY) + 'px';
+      faceBox.style.width = (box.width * scaleX) + 'px';
+      faceBox.style.height = (box.height * scaleY) + 'px';
+      btn.disabled = false;
+      wrap.classList.add('scanning');
+      clearToast('enroll-toast');
+      toast('enroll-toast', '✅ Face detected — press Capture Sample', 'success');
+    } else {
+      faceBox.style.display = 'none';
+      btn.disabled = true;
+      toast('enroll-toast', '👤 Position your face in the frame…', 'info');
+    }
+  }, 300);
+}
+
+async function captureEnroll() {
+  const video = document.getElementById('enroll-video');
+  const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks().withFaceDescriptor();
+
+  if (!result) {
+    toast('enroll-toast', '❌ No face detected. Try again.', 'error');
+    return;
+  }
+
+  enrolledDescriptors.push(result.descriptor);
+  enrollCount++;
+  updateEnrollUI();
+
+  if (enrollCount >= 5) {
+    // Done — generate wallet
+    clearLoop(enrollDetectionLoop);
+    stopStream(enrollStream);
+
+    // Save to session
+    sessionStorage.setItem('biovault_descriptors', JSON.stringify(enrolledDescriptors.map(d => Array.from(d))));
+    walletAddress = addressFromDescriptor(descriptorAvg(enrolledDescriptors));
+    sessionStorage.setItem('biovault_addr', walletAddress);
+
+    toast('enroll-toast', '🎉 Enrollment complete! Your wallet is being created…', 'success');
+    setTimeout(() => openWallet(), 1400);
+  } else {
+    toast('enroll-toast', `✅ Sample ${enrollCount}/5 captured. ${5 - enrollCount} more needed.`, 'success');
+  }
+}
+
+function updateEnrollUI() {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('estep-' + i);
+    const dot = document.getElementById('cdot-' + (i-1));
+    if (i < enrollCount + 1) {
+      el.className = 'step done';
+      dot.className = 'cap-dot done';
+    } else if (i === enrollCount + 1) {
+      el.className = 'step active';
+      dot.className = 'cap-dot active';
+    } else {
+      el.className = 'step';
+      dot.className = 'cap-dot';
+    }
+  }
+}
+
+// ── Authentication ────────────────────────────────────────
+async function startAuth() {
+  if (enrolledDescriptors.length === 0) {
+    alert('No wallet enrolled yet. Please create a new wallet first.');
+    return;
+  }
+  showPanel('panel-auth');
+  clearToast('auth-toast');
+  document.getElementById('btn-verify').disabled = true;
+
+  try {
+    authStream = await startCamera('auth-video');
+    startAuthDetection();
+  } catch(e) {
+    toast('auth-toast', '🚫 Camera access denied: ' + e.message, 'error');
+  }
+}
+
+function startAuthDetection() {
+  const video = document.getElementById('auth-video');
+  const wrap = document.getElementById('auth-cam-wrap');
+  const faceBox = document.getElementById('auth-facebox');
+  const btn = document.getElementById('btn-verify');
+
+  authDetectionLoop = setInterval(async () => {
+    if (!video.videoWidth) return;
+    const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor().catch(()=>null);
+
+    if (result) {
+      const { box } = result.detection;
+      const scaleX = wrap.clientWidth / video.videoWidth;
+      const scaleY = wrap.clientHeight / video.videoHeight;
+      faceBox.style.display = 'block';
+      faceBox.style.left = (box.x * scaleX) + 'px';
+      faceBox.style.top = (box.y * scaleY) + 'px';
+      faceBox.style.width = (box.width * scaleX) + 'px';
+      faceBox.style.height = (box.height * scaleY) + 'px';
+      btn.disabled = false;
+      toast('auth-toast', '✅ Face detected — press Scan & Verify', 'success');
+    } else {
+      faceBox.style.display = 'none';
+      btn.disabled = true;
+      toast('auth-toast', '👤 Position your face in the frame…', 'info');
+    }
+  }, 300);
+}
+
+async function verifyFace() {
+  const video = document.getElementById('auth-video');
+  const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks().withFaceDescriptor();
+
+  if (!result) {
+    toast('auth-toast', '❌ No face detected. Try again.', 'error');
+    return;
+  }
+
+  const avg = descriptorAvg(enrolledDescriptors);
+  const dist = euclidean(result.descriptor, avg);
+  const confidence = Math.max(0, Math.min(100, Math.round((1 - dist / 1.2) * 100)));
+
+  updateMatchBar('match-bar', 'match-pct', confidence);
+
+  if (dist < 0.55) {
+    toast('auth-toast', `🟢 Identity confirmed! Match: ${confidence}%`, 'success');
+    setTimeout(() => {
+      clearLoop(authDetectionLoop);
+      stopStream(authStream);
+      openWallet();
+    }, 900);
+  } else {
+    toast('auth-toast', `🔴 Face not recognized (${confidence}% confidence). Please try again.`, 'error');
+  }
+}
+
+function updateMatchBar(barId, pctId, pct) {
+  const bar = document.getElementById(barId);
+  const pctEl = document.getElementById(pctId);
+  bar.style.width = pct + '%';
+  bar.style.background = pct >= 60 ? 'var(--accent2)' : pct >= 35 ? 'var(--warn)' : 'var(--danger)';
+  pctEl.textContent = pct + '%';
+}
+
+// ── Wallet ────────────────────────────────────────────────
+function openWallet() {
+  setAuthStatus(true);
+  document.getElementById('wallet-addr').textContent = walletAddress || '0xGENERATED…';
+  showPanel('panel-wallet');
+}
+
+function lockWallet() {
+  setAuthStatus(false);
+  goChoice();
+}
+
+function goChoice() {
+  enrollDetectionLoop = clearLoop(enrollDetectionLoop);
+  authDetectionLoop = clearLoop(authDetectionLoop);
+  txDetectionLoop = clearLoop(txDetectionLoop);
+  stopStream(enrollStream); enrollStream = null;
+  stopStream(authStream); authStream = null;
+  stopStream(txStream); txStream = null;
+  showPanel('panel-choice');
+}
+
+function resetAll() {
+  if (!confirm('This will delete your biometric profile and wallet. Are you sure?')) return;
+  sessionStorage.clear();
+  enrolledDescriptors = [];
+  walletAddress = null;
+  setAuthStatus(false);
+  goChoice();
+}
+
+// ── Send Modal ────────────────────────────────────────────
+function openSendModal() {
+  document.getElementById('send-modal').classList.add('open');
+}
+function closeSendModal() {
+  document.getElementById('send-modal').classList.remove('open');
+}
+
+function initiateSend() {
+  const addr = document.getElementById('send-addr').value.trim();
+  const amt = parseFloat(document.getElementById('send-amt').value);
+  if (!addr) { toast('send-toast', '⚠ Enter a recipient address.', 'warn'); return; }
+  if (!amt || amt <= 0) { toast('send-toast', '⚠ Enter a valid amount.', 'warn'); return; }
+  if (amt > 2.4718) { toast('send-toast', '⚠ Insufficient balance.', 'error'); return; }
+
+  pendingSendData = { addr, amt };
+  closeSendModal();
+  openTxAuth();
+}
+
+// ── TX Auth Modal ─────────────────────────────────────────
+async function openTxAuth() {
+  document.getElementById('send-auth-modal').classList.add('open');
+  document.getElementById('btn-txverify').disabled = true;
+  document.getElementById('txmatch-pct').textContent = '—';
+  document.getElementById('txmatch-bar').style.width = '0';
+  clearToast('txauth-toast');
+
+  try {
+    txStream = await startCamera('txauth-video');
+    startTxDetection();
+  } catch(e) {
+    toast('txauth-toast', '🚫 Camera denied: ' + e.message, 'error');
+  }
+}
+
+function startTxDetection() {
+  const video = document.getElementById('txauth-video');
+  const wrap = document.getElementById('txauth-cam-wrap');
+  const faceBox = document.getElementById('txauth-facebox');
+  const btn = document.getElementById('btn-txverify');
+
+  txDetectionLoop = setInterval(async () => {
+    if (!video.videoWidth) return;
+    const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+      .withFaceLandmarks().withFaceDescriptor().catch(()=>null);
+
+    if (result) {
+      const { box } = result.detection;
+      const scaleX = wrap.clientWidth / video.videoWidth;
+      const scaleY = wrap.clientHeight / video.videoHeight;
+      faceBox.style.display = 'block';
+      faceBox.style.left = (box.x * scaleX) + 'px';
+      faceBox.style.top = (box.y * scaleY) + 'px';
+      faceBox.style.width = (box.width * scaleX) + 'px';
+      faceBox.style.height = (box.height * scaleY) + 'px';
+      btn.disabled = false;
+      toast('txauth-toast', '✅ Face detected — authorize to sign transaction', 'success');
+    } else {
+      faceBox.style.display = 'none';
+      btn.disabled = true;
+      toast('txauth-toast', '👤 Look at the camera to authorize…', 'info');
+    }
+  }, 300);
+}
+
+async function verifyAndSend() {
+  const video = document.getElementById('txauth-video');
+  const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+    .withFaceLandmarks().withFaceDescriptor();
+
+  if (!result) { toast('txauth-toast', '❌ No face detected.', 'error'); return; }
+
+  const avg = descriptorAvg(enrolledDescriptors);
+  const dist = euclidean(result.descriptor, avg);
+  const confidence = Math.max(0, Math.min(100, Math.round((1 - dist / 1.2) * 100)));
+  updateMatchBar('txmatch-bar', 'txmatch-pct', confidence);
+
+  if (dist < 0.55) {
+    toast('txauth-toast', `✅ Identity confirmed (${confidence}%). Broadcasting…`, 'success');
+    setTimeout(() => {
+      txDetectionLoop = clearLoop(txDetectionLoop);
+      stopStream(txStream); txStream = null;
+      document.getElementById('send-auth-modal').classList.remove('open');
+      alert(`✅ Transaction Signed & Broadcast!\n\nTo: ${pendingSendData.addr}\nAmount: ${pendingSendData.amt} ETH\n\nTx Hash: 0x${Math.random().toString(16).slice(2,18)}…`);
+      pendingSendData = null;
+    }, 1000);
+  } else {
+    toast('txauth-toast', `🔴 Face mismatch (${confidence}%). Unauthorized.`, 'error');
+  }
+}
+
+function cancelTxAuth() {
+  txDetectionLoop = clearLoop(txDetectionLoop);
+  stopStream(txStream); txStream = null;
+  document.getElementById('send-auth-modal').classList.remove('open');
+}
+
+function showReceive() {
+  alert(`Your Wallet Address:\n\n${walletAddress}\n\nShare this address to receive ETH.`);
+}
+
+// ── Boot ──────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // Wait for face-api.js to load then init
+  const tryLoad = setInterval(() => {
+    if (typeof faceapi !== 'undefined') {
+      clearInterval(tryLoad);
+      loadModels();
+    }
+  }, 300);
+});
+</script>
+</body>
+</html>

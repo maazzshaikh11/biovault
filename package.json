@@ -1,0 +1,21 @@
+{
+  "name": "biovault",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
+    "autoprefixer": "^10.4.27",
+    "dotenv": "^17.3.1",
+    "ethers": "^6.16.0",
+    "hardhat": "^3.2.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2"
+  }
+}
