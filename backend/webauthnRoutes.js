@@ -14,7 +14,11 @@ const router = express.Router();
 
 const rpID = process.env.WEBAUTHN_RP_ID || 'localhost';
 const rpName = process.env.WEBAUTHN_RP_NAME || 'BioVault';
-const origin = process.env.WEBAUTHN_ORIGIN || `http://${rpID}:5173`;
+const origin = [
+  process.env.WEBAUTHN_ORIGIN || 'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5173'
+];
 
 // In-memory challenge store (or use Redis for production)
 const challenges = new Map();

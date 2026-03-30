@@ -4,6 +4,7 @@ import Register from './pages/Register';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SendTransaction from './pages/SendTransaction';
+import FaceAuth from './pages/FaceAuth';
 
 // Simple nav header
 function Header() {
@@ -34,6 +35,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/send" element={<SendTransaction />} />
+            <Route path="/face" element={<FaceAuth />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
